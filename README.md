@@ -4,6 +4,8 @@
 [![Framework](https://img.shields.io/badge/Framework-FastAPI-green.svg)](https://fastapi.tiangolo.com/)
 
 A simple yet robust FastAPI proxy server designed to interface with the OpenRouter API while providing OpenAI-compatible endpoints. It intelligently rotates through multiple OpenRouter API keys, automatically retrying requests upon hitting rate limits, ensuring higher availability and load distribution for your applications.
+> **Note:** This proxy was created partly due to the current rate limits on exciting new models like Gemini 2.5 Pro via OpenRouter. This tool helps distribute load across multiple keys. Please use this responsibly and avoid overwhelming the underlying services provided by OpenRouter and Google.
+
 
 ## Features
 
@@ -36,7 +38,7 @@ A simple yet robust FastAPI proxy server designed to interface with the OpenRout
 
 1.  **Clone the repository:**
     ```bash
-    git clone <your-repo-url> # Replace with your repository URL
+    git clone https://github.com/Naveenxyz/openrouterproxy
     cd openrouterproxy # Or your repository directory name
     ```
 
@@ -183,8 +185,6 @@ This project is open-source. Please add your preferred license (e.g., MIT, Apach
 ```
 MIT License
 
-Copyright (c) [Year] [Your Name/Organization]
-
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
@@ -203,5 +203,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-Replace `[Year]` and `[Your Name/Organization]`.
