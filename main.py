@@ -2,9 +2,9 @@ import os
 import httpx
 import asyncio
 import logging
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends, Header
 from fastapi.responses import StreamingResponse, JSONResponse
-from typing import List, Optional
+from typing import List, Optional, Set
 import json
 import dotenv
 
@@ -23,9 +23,20 @@ OPENROUTER_API_KEYS = [key.strip() for key in OPENROUTER_API_KEYS_STR.split(',')
 NUM_KEYS = len(OPENROUTER_API_KEYS)
 print(f"✅ Loaded {NUM_KEYS} OpenRouter API keys.")
 
+# Load allowed authentication tokens (comma-separated)
+ALLOWED_AUTH_TOKENS_STR = os.environ.get("ALLOWED_AUTH_TOKENS", "")
+if not ALLOWED_AUTH_TOKENS_STR:
+    print("⚠️ WARNING: ALLOWED_AUTH_TOKENS environment variable not set or empty. Authentication disabled.")
+    ALLOWED_AUTH_TOKENS: Set[str] = set() # Empty set means no auth required
+else:
+    ALLOWED_AUTH_TOKENS = {token.strip() for token in ALLOWED_AUTH_TOKENS_STR.split(',')}
+    print(f"✅ Loaded {len(ALLOWED_AUTH_TOKENS)} allowed authentication tokens. Authentication enabled.")
+
+
 # OpenRouter API endpoint
 OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 OPENROUTER_CHAT_ENDPOINT = f"{OPENROUTER_API_BASE}/chat/completions"
+OPENROUTER_MODELS_ENDPOINT = f"{OPENROUTER_API_BASE}/models" # Added models endpoint
 
 # Optional: Referer and X-Title headers (replace with your actual site/app)
 # OpenRouter docs recommend setting these: https://openrouter.ai/docs#requests
@@ -75,9 +86,44 @@ async def stream_response_generator(api_response: httpx.Response):
     finally:
         await api_response.aclose() # Ensure the response is closed
 
+# --- Authentication Dependency ---
+async def verify_token(authorization: Optional[str] = Header(None)):
+    """Dependency to verify the provided Bearer token."""
+    # Only enforce auth if ALLOWED_AUTH_TOKENS is configured
+    if not ALLOWED_AUTH_TOKENS:
+        return # No auth required
+
+    if authorization is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header missing",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication scheme",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if token not in ALLOWED_AUTH_TOKENS:
+            raise HTTPException(
+                status_code=403, # Use 403 Forbidden for invalid token
+                detail="Invalid authentication token",
+            )
+    except ValueError:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authorization header format",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # If token is valid, proceed
+    return
+
 # --- API Endpoint ---
 @app.post("/v1/chat/completions")
-async def chat_completions(request: Request):
+async def chat_completions(request: Request, _=Depends(verify_token)): # Add dependency here
     """
     Handles chat completion requests, proxies them to OpenRouter,
     manages key rotation, and retries on rate limits.
@@ -206,9 +252,45 @@ async def chat_completions(request: Request):
     logger.error(f"All {NUM_KEYS} API keys failed for the request. Last error: {last_error_status} - {last_error_detail}")
     raise HTTPException(status_code=last_error_status, detail=last_error_detail)
 
+
+@app.get("/v1/models")
+async def get_models(_=Depends(verify_token)): # Add dependency here
+    """
+    Fetches the list of available models from OpenRouter.
+    Uses the first configured API key.
+    """
+    api_key = OPENROUTER_API_KEYS[0] # Use the first key for this simple request
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "HTTP-Referer": YOUR_SITE_URL,
+        "X-Title": YOUR_APP_NAME,
+    }
+
+    logger.info("Fetching models list from OpenRouter...")
+    try:
+        response = await client.get(OPENROUTER_MODELS_ENDPOINT, headers=headers)
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+
+        logger.info("Successfully fetched models list.")
+        return JSONResponse(content=response.json(), status_code=response.status_code)
+
+    except httpx.HTTPStatusError as e:
+        error_detail = f"Error fetching models: Status {e.response.status_code}, Response: {e.response.text}"
+        logger.error(error_detail)
+        raise HTTPException(status_code=e.response.status_code, detail=error_detail)
+    except httpx.RequestError as e:
+        error_detail = f"HTTPX Request Error fetching models: {e.__class__.__name__} - {e}"
+        logger.error(error_detail)
+        raise HTTPException(status_code=503, detail=error_detail) # Service Unavailable
+    except Exception as e:
+        error_detail = f"Unexpected error fetching models: {e.__class__.__name__} - {e}"
+        logger.exception(error_detail) # Log full traceback
+        raise HTTPException(status_code=500, detail=error_detail)
+
+
 @app.get("/")
 async def read_root():
-    return {"message": "OpenRouter Key Rotator Proxy is running. Use POST /v1/chat/completions."}
+    return {"message": "OpenRouter Key Rotator Proxy is running. Use POST /v1/chat/completions and GET /v1/models."} # Updated message
 
 # --- Main execution ---
 if __name__ == "__main__":
