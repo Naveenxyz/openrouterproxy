@@ -1,0 +1,3 @@
+fastapi
+uvicorn[standard] # Includes performance extras like uvloop
+httpx

@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  openrouter-proxy:
+    build: . # Build the image from the Dockerfile in the current directory ('.')
+    container_name: openrouter_proxy # A friendly name for the running container
+    restart: unless-stopped # Automatically restart the container unless manually stopped
+    ports:
+      # Map the host port (defined in .env or default 8000) to the container's port 8000
+      - "${PROXY_PORT:-8000}:8000"
+    env_file:
+      - .env # Load environment variables from the .env file
+    # --- Development Option ---
+    # Uncomment the volume below to mount your local main.py into the container.
+    # This allows code changes to be reflected immediately IF you also use
+    # the "--reload" CMD in the Dockerfile (see Dockerfile comments).
+    # For production, it's generally better to rebuild the image for code changes.
+    # volumes:
+    #   - ./main.py:/app/main.py
+
+networks:
+  default:
+    driver: bridge
